@@ -126,11 +126,11 @@ const TreeNodeLink = memo(
               >
                 {renderLabel(entry.title)}
               </span>
-              {entry.$isContainer && entry.childrenCount > 0 && (
+              {/*entry.$isContainer && entry.childrenCount > 0 && (
                 <div className={styles.root.link.badge()}>
                   <div>{entry.childrenCount}</div>
                 </div>
-              )}
+              )*/}
             </HStack>
           </Link>
           {entry.$isContainer && (

@@ -11,7 +11,11 @@ export const distPlugin: Plugin = {
       const packages = glob.sync('dist/**/*/src')
       for (const pkg of packages) {
         const dist = pkg.replace('dist/', 'packages/').replace('/src', '/dist')
-        fs.copySync(pkg, dist)
+        try {
+          fs.copySync(pkg, dist)
+        } catch (e) {
+          // ignore
+        }
       }
       fs.copySync('dist/index.css', 'packages/css/src/generated.css')
     })
