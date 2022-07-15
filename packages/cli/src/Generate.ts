@@ -8,6 +8,7 @@ import {Workspace} from '@alinea/core/Workspace'
 import {BetterSqlite3Driver} from '@alinea/store/sqlite/drivers/BetterSqlite3Driver'
 import {SqlJsDriver} from '@alinea/store/sqlite/drivers/SqlJsDriver'
 import {SqliteStore} from '@alinea/store/sqlite/SqliteStore'
+import {Store} from '@alinea/store/Store'
 import {EvalPlugin} from '@esbx/eval'
 import {ReactPlugin} from '@esbx/react'
 import {FSWatcher} from 'chokidar'
@@ -134,7 +135,14 @@ export type GenerateOptions = {
   quiet?: boolean
 }
 
-export async function generate(options: GenerateOptions) {
+export type GenerateContext = {
+  store: Store
+  config: Config
+}
+
+export async function generate(
+  options: GenerateOptions
+): Promise<GenerateContext> {
   const {
     wasmCache = false,
     cwd = process.cwd(),
@@ -149,13 +157,20 @@ export async function generate(options: GenerateOptions) {
   const outDir = path.join(cwd, '.alinea')
   const watch = options.watch || onConfigRebuild || onCacheRebuild
 
-  await fs.copy(path.join(staticDir, 'server'), path.join(outDir, '.server'), {
-    overwrite: true
-  })
-
+  await copyBoilerplate()
   await compileConfig()
   await copyStaticFiles()
   await generatePackage()
+
+  async function copyBoilerplate() {
+    await fs.copy(
+      path.join(staticDir, 'server'),
+      path.join(outDir, '.server'),
+      {
+        overwrite: true
+      }
+    )
+  }
 
   async function copyStaticFiles() {
     await fs.mkdirp(outDir).catch(console.log)
@@ -230,6 +245,24 @@ export async function generate(options: GenerateOptions) {
     )
   }
 
+  async function loadConfig() {
+    const unique = Date.now()
+    const genConfigFile = path.join(outDir, 'config.js')
+    const outFile = `file://${genConfigFile}?${unique}`
+    const exports = await import(outFile)
+    const config: Config = exports.config
+    if (!config) throw fail(`No config found in "${genConfigFile}"`)
+    return {
+      config,
+      unload: () => {
+        // An attempt at having the previous config garbage collected,
+        // no clue if this will work.
+        // See: nodejs/tooling#51
+        exports.config = null
+      }
+    }
+  }
+
   async function generatePackage() {
     if (cacheWatcher) (await cacheWatcher).stop()
     const config = await loadConfig()
@@ -240,15 +273,6 @@ export async function generate(options: GenerateOptions) {
     const dashboard = config.dashboard
     if (dashboard?.staticFile)
       await generateDashboard(dashboard.handlerUrl, dashboard.staticFile!)
-  }
-
-  async function loadConfig() {
-    const genConfigFile = path.join(outDir, 'config.js')
-    const outFile = 'file://' + genConfigFile
-    const exports = await import(outFile)
-    const config: Config = exports.default || exports.config
-    if (!config) throw fail(`No config found in "${genConfigFile}"`)
-    return config
   }
 
   async function generateWorkspaces(config: Config) {

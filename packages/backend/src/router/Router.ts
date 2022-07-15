@@ -127,6 +127,7 @@ export namespace router {
   export async function parseFormData<In extends {request: Request}>(
     input: In
   ): Promise<In & {body: FormData}> {
+    console.log(input.request)
     const body = await input.request.formData()
     return {...input, body}
   }

@@ -1,15 +1,21 @@
-import {Backend} from '@alinea/backend/Backend'
 import {nodeHandler} from '@alinea/backend/router/NodeHandler'
 import {router} from '@alinea/backend/router/Router'
-import {ReadableStream, Request, Response, TextEncoderStream} from '@alinea/iso'
+import {
+  fetch,
+  ReadableStream,
+  Request,
+  Response,
+  TextEncoderStream
+} from '@alinea/iso'
 import semver from 'compare-versions'
 import esbuild, {BuildOptions, BuildResult} from 'esbuild'
 import http from 'node:http'
 import {createRequire} from 'node:module'
 import path from 'node:path'
+import {Worker} from 'node:worker_threads'
 import {buildOptions} from './build/BuildOptions'
 import {generate} from './Generate'
-import {DevBackend} from './serve/DevBackend'
+import {LocalBackendContext} from './serve/LocalBackend'
 import {dirname} from './util/Dirname'
 
 const __dirname = dirname(import.meta)
@@ -117,6 +123,11 @@ export type ServeOptions = {
   production?: boolean
 }
 
+type DevServer = {
+  port: number
+  close: () => void
+}
+
 export async function serve(options: ServeOptions): Promise<void> {
   const {
     cwd = process.cwd(),
@@ -125,11 +136,6 @@ export async function serve(options: ServeOptions): Promise<void> {
     production = false
   } = options
   const port = options.port ? Number(options.port) : 4500
-  const outDir = path.join(cwd, '.alinea')
-  const storeLocation = path.join(outDir, 'store.js')
-  const genConfigFile = path.join(outDir, 'config.js')
-  const backendFile = path.join(outDir, 'backend.js')
-  const draftsFile = path.join(outDir, 'drafts.js')
   const clients: Array<Client> = []
   const {version} = require('react/package.json')
   const isReact18 = semver.compare(version, '18.0.0', '>=')
@@ -143,20 +149,32 @@ export async function serve(options: ServeOptions): Promise<void> {
     if (type === 'reload') clients.length = 0
   }
 
-  let server: Promise<Backend> | undefined
+  let server: Promise<DevServer> | undefined
+  let proxying = new Set()
 
-  async function reloadServer(error?: Error) {
-    await (server = error ? undefined : devServer())
+  function reloadServer(error?: Error) {
+    const current = server
+    if (current) {
+      current.then(server => {
+        const pending = [...proxying]
+        console.log(`> Should await ${pending.length} requests before shutdown`)
+        return Promise.all(pending).then(() => {
+          console.log(`> Closing server`)
+          server.close()
+        })
+      })
+    }
+    server = error ? undefined : devServer()
   }
 
   await generate({
     ...options,
     onConfigRebuild: async error => {
-      await reloadServer(error)
+      reloadServer(error)
       if (!alineaDev) reload('refresh')
     },
     onCacheRebuild: async error => {
-      await reloadServer(error)
+      reloadServer(error)
       reload('refetch')
     }
   })
@@ -205,14 +223,22 @@ export async function serve(options: ServeOptions): Promise<void> {
       }),
       matcher
         .all('/hub/*')
-        .map(async ({request}): Promise<Response | undefined> => {
+        .map(async ({request, url}): Promise<Response | undefined> => {
           const unavailable = () =>
             new Response('An error occured, see your terminal for details', {
               status: 503
             })
           if (server) {
-            const backend = await server
-            return backend.handle(request)
+            const {port} = await server
+            const location = `http://localhost:${port}${url.pathname}${url.search}`
+            console.log(`> Forward ${location}`)
+            const response = fetch(location, {
+              method: request.method,
+              headers: request.headers,
+              body: request.body
+            }).finally(() => proxying.delete(response))
+            proxying.add(response)
+            return response
           }
           return unavailable()
         }),
@@ -260,21 +286,21 @@ export async function serve(options: ServeOptions): Promise<void> {
     )
   })
 
-  async function devServer() {
-    const unique = Date.now()
-    const {createStore: createDraftStore} = await import(`file://${draftsFile}`)
-    if (production) return (await import(`file://${backendFile}`)).backend
-
-    // Todo: these should be imported in a worker since we can't reclaim memory
-    // used, see #nodejs/modules#307
-    const {config} = await import(`file://${genConfigFile}?${unique}`)
-    const {createStore} = await import(`file://${storeLocation}?${unique}`)
-    return new DevBackend({
-      config,
-      createStore,
-      port,
-      cwd,
-      createDraftStore
+  async function devServer(): Promise<DevServer> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(path.join(__dirname, 'serve/LocalBackend.js'))
+      const context: LocalBackendContext = {rootDir: cwd, port}
+      worker
+        .on('online', () => {
+          worker.postMessage(context)
+        })
+        .on('message', port => {
+          resolve({
+            port: Number(port),
+            close: () => worker.postMessage('close')
+          })
+        })
+        .on('error', reject)
     })
   }
 }
