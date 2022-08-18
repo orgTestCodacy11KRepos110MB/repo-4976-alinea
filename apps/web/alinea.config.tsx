@@ -46,7 +46,7 @@ const web = workspace('Alinea', {
     const noPreviews = new Set(['Docs', 'MediaLibrary'])
     if (noPreviews.has(entry.type)) return null
     const location =
-      process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : ''
+      process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : ''
     return (
       <BrowserPreview
         // reload
@@ -82,8 +82,8 @@ const cloudBackend = createCloudBackend()
 
 export const config = createConfig({
   dashboard: {
-    dashboardUrl: 'https://alinea.sh/admin.html',
-    handlerUrl: 'https://alinea.sh/api/cms',
+    dashboardUrl: 'http://localhost:4500',
+    handlerUrl: 'http://localhost:4500/api/cms',
     staticFile: './public/admin.html'
   },
   backend: cloudBackend,
