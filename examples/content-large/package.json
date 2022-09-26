@@ -1,0 +1,17 @@
+{
+  "scripts": {
+    "dev": "alinea serve",
+    "clean": "tsx clean.ts",
+    "seed": "alinea generate -- tsx ./seed.ts"
+  },
+  "dependencies": {
+    "@alinea/content": "link:./.alinea",
+    "alinea": "latest",
+    "chance": "^1.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^18.7.21",
+    "rimraf": "^3.0.2",
+    "tsx": "^3.9.0"
+  }
+}

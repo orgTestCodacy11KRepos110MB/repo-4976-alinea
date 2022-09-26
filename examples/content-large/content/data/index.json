@@ -1,0 +1,32 @@
+{
+  "id": "ODMo_Ci6MSiyx6c0N5BjG",
+  "type": "Page",
+  "title": "Welcome",
+  "content": [
+    {
+      "type": "heading",
+      "textAlign": "left",
+      "level": 1,
+      "content": [
+        {
+          "type": "text",
+          "text": "Content example"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "textAlign": "left",
+      "content": [
+        {
+          "type": "text",
+          "text": "Example content can be generated with `yarn seed`"
+        }
+      ]
+    }
+  ],
+  "alinea": {
+    "index": "Zz",
+    "root": "data"
+  }
+}
